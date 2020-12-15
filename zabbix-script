@@ -1,0 +1,67 @@
+# Get, unpack to root folder
+cd
+mkdir zabbix-agent && cd zabbix-agent
+wget http://www.zabbix.com/downloads/2.0.4/zabbix_agents_2.0.4.solaris10.amd64.tar.gz
+tar xvf zabbix_agent*
+
+# Install binaries
+cp bin/zabbix_* /usr/bin/
+cp sbin/zabbix* /usr/sbin/
+
+# Add user, group
+groupadd -g 122 zabbix
+useradd -c 'Zabbix' -d / -g zabbix -s /usr/bin/false zabbix
+
+# create init.d script
+cat << 'EOF' > /etc/init.d/zabbix_agentd
+#!/bin/sh
+  CONFIG=/etc/zabbix/zabbix_agentd.conf
+  DAEMON=/usr/sbin/zabbix_agentd
+  PIDDIR=/var/run/zabbix
+  PID=/var/run/zabbix/zabbix_agentd.pid
+  case "$1" in
+          start)
+                if [ ! -d $PIDDIR ]; then
+                        mkdir $PIDDIR
+                fi
+                chown zabbix:sys $PIDDIR
+
+                  if [ -f $CONFIG -a -f $DAEMON ]; then
+                          echo 'Starting zabbix_agentd.'
+                          $DAEMON -c $CONFIG
+                  fi
+                  ;;
+          stop)
+                  echo 'Stopping zabbix_agentd.'
+                  kill -TERM $(cat $PID)
+                  ;;
+          restart)
+                  $0 stop
+                  sleep 3
+                  $0 start
+                  ;;
+          *)
+                  echo "Usage: $0 { start | stop | restart }"
+                  exit 1
+                  ;;
+  esac
+EOF
+chown root:sys /etc/init.d/zabbix_agentd
+chmod 744 /etc/init.d/zabbix_agentd
+ln -s /etc/init.d/zabbix_agentd /etc/rc3.d/S99zabbix_agentd
+
+# create config file
+mkdir -p /etc/zabbix/conf.d
+cat << EOF >/etc/zabbix/zabbix_agentd.conf
+Hostname=$(hostname -s).$(domainname)
+Server=zabbix-server.mydomain.com
+Include=/etc/zabbix/conf.d/
+PidFile=/var/run/zabbix/zabbix_agentd.pid
+LogFile=/var/log/zabbix_agentd.log
+LogFileSize=100
+Timeout=30
+EOF
+
+# make pid, log files
+mkdir /var/run/zabbix && chown zabbix:zabbix /var/run/zabbix
+touch /var/log/zabbix_agentd.log && chown zabbix:zabbix /var/log/zabbix_agentd.log
